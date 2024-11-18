@@ -22,7 +22,7 @@ VERMELHO = (255, 0, 0)
 VERDE = (0, 255, 0)
 
 # Rocket constants
-GRAVIDADE = 0.1
+GRAVIDADE = 0.5
 IMPULSO = 1.0
 RAPIDEZ_ROTACAO = 0.1
 MAX_COMBUSTIVEL = 100
@@ -35,10 +35,12 @@ MUTATION_RANGE = 1
 
 # Neural Network architecture
 INPUT_SIZE = 7  # Adjusted for the new inputs
-HIDDEN_LAYERS = [16, 16]  # Can be adjusted to increase complexity
+HIDDEN_LAYERS = [32, 32]  # Can be adjusted to increase complexity
 OUTPUT_SIZE = 3
-RAND_X_RANGE = 0
-RAND_Y_RANGE = 0
+RAND_X_RANGE = 200
+RAND_Y_RANGE = 20
+RAND_VX_RANGE = 0
+RAND_VY_RANGE = 0
 RAND_ANGLE_RANGE = 0.5
 SPEED_LIMIT = 30
 # STEPS_PER_FRAME = 50
@@ -72,11 +74,11 @@ class Rocket:
         self.reset()
 
     def reset(self):
-        self.x = LARGURA / 2  + 300 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
-        self.y = ALTURA / 4  + 0 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
+        self.x = LARGURA / 2  + 0 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
+        self.y = ALTURA / 4  - 20 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
         self.angulo = random.uniform(0, RAND_ANGLE_RANGE)
-        self.vx = 0
-        self.vy = 0
+        self.vx = random.uniform(-RAND_VX_RANGE, RAND_VX_RANGE)
+        self.vy = 10 + random.uniform(-RAND_VY_RANGE, RAND_VY_RANGE)
         self.combustivel = MAX_COMBUSTIVEL
         self.colidiu = False
         self.fitness = 0
@@ -112,7 +114,6 @@ class Rocket:
                 (self.y > ALTURA - 10 and (self.x < LARGURA / 2 - 50 or self.x > LARGURA / 2 + 50))):
                 if(self.x < 0 or self.x > LARGURA or self.y < 0):
                     self.hit_wall = True
-                    print("hitwall")
                     self.vy = 10000
                 self.colidiu = True
 
@@ -123,8 +124,6 @@ class Rocket:
                 abs(self.angulo) < 0.2):
                 self.success = True
                 self.colidiu = True
-                print("success!")
-                print(f"fuel: {self.combustivel}")
 
     def draw(self, screen):
         if not self.colidiu or self.success:
@@ -371,6 +370,8 @@ def main():
     evolution = Evolution()
     font = pygame.font.Font(None, 36)
     steps = 500
+    runs = 10
+    render = True
 
     running = True
     while running:
@@ -401,9 +402,11 @@ def main():
                     steps = 1
                 elif event.key == pygame.K_o:
                     steps = 500
+                elif event.key == pygame.K_m:
+                    render = False
+                elif event.key == pygame.K_n:
+                    render  = True
 
-        screen.fill(PRETO)
-        pygame.draw.rect(screen, VERDE, (LARGURA / 2 - 50, ALTURA - 10, 100, 10))
 
         for _ in range(steps):
 
@@ -413,16 +416,23 @@ def main():
                 evolution.run += 1
                 evolution.reset_run()
 
-            if evolution.run == 5:
+            if evolution.run == runs:
                 evolution.sexual_evolve()
 
-                global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT
+                global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT, RAND_VY_RANGE, RAND_VX_RANGE
 
                 if evolution.generation % 10 == 0:
-                    RAND_X_RANGE = min(200, RAND_X_RANGE + 0.1)
-                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
+                    RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
+                    if evolution.generation > 150:
+                        RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0.5)
+                        RAND_VY_RANGE = min(10, RAND_VY_RANGE + 0.5)
+                        RAND_VX_RANGE = min(10, RAND_VX_RANGE + 0.5)
+                        runs = 20
                     SPEED_LIMIT = max(20, SPEED_LIMIT - 0.2)
                     # RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.01)
+
+                    if evolution.generation > 500:
+                        runs = 50
 
                 
                 if evolution.generation % 5 == 0:
@@ -438,10 +448,12 @@ def main():
 
 
         
+        screen.fill(PRETO)
 
-
-        for rocket in evolution.rockets:
-            rocket.draw(screen)
+        if render:
+            pygame.draw.rect(screen, VERDE, (LARGURA / 2 - 50, ALTURA - 10, 100, 10))
+            for rocket in evolution.rockets:
+                rocket.draw(screen)
 
         text = font.render(
             f"Gen {evolution.generation} All Time Best: {evolution.best_fitness:.2f} Current Best Fitness: {evolution.current_best_fitness:.2f}",
