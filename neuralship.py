@@ -11,6 +11,7 @@ import pygame
 
 # Initialize Pygame
 pygame.init()
+pygame.time
 
 # Constants
 LARGURA = 800  # Width
@@ -28,17 +29,19 @@ MAX_COMBUSTIVEL = 100
 VELOCIDADE_INICIAL = 2
 
 # Neural Network parameters
-POPULATION_SIZE = 20
-MUTATION_RATE = 0.1
-MUTATION_RANGE = 0.5
+POPULATION_SIZE = 50
+MUTATION_RATE = 0.3
+MUTATION_RANGE = 1
 
 # Neural Network architecture
 INPUT_SIZE = 7  # Adjusted for the new inputs
-HIDDEN_LAYERS = [32, 32]  # Can be adjusted to increase complexity
+HIDDEN_LAYERS = [16, 16]  # Can be adjusted to increase complexity
 OUTPUT_SIZE = 3
 RAND_X_RANGE = 0
 RAND_Y_RANGE = 0
-RAND_ANGLE_RANGE = math.pi/6
+RAND_ANGLE_RANGE = 0.5
+SPEED_LIMIT = 20
+# STEPS_PER_FRAME = 50
 
 
 class NeuralNetwork:
@@ -57,10 +60,10 @@ class NeuralNetwork:
             activation = np.tanh(activation)  # Activation function
         return activation
 
-    def mutate(self):
+    def mutate(self, rate=MUTATION_RATE):
         # Apply random mutations to weights
         for i in range(len(self.weights)):
-            mask = np.random.random(self.weights[i].shape) < MUTATION_RATE
+            mask = np.random.random(self.weights[i].shape) < rate
             self.weights[i] += mask * np.random.randn(*self.weights[i].shape) * MUTATION_RANGE
 
 
@@ -69,16 +72,17 @@ class Rocket:
         self.reset()
 
     def reset(self):
-        self.x = LARGURA / 2 +random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
-        self.y = ALTURA / 4 - 90 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
-        self.angulo = random.uniform(-RAND_ANGLE_RANGE, RAND_ANGLE_RANGE)
+        self.x = LARGURA / 2  + 100 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
+        self.y = ALTURA / 4  - 90 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
+        self.angulo = random.uniform(0, RAND_ANGLE_RANGE)
         self.vx = 0
-        self.vy = 5
+        self.vy = 20
         self.combustivel = MAX_COMBUSTIVEL
         self.colidiu = False
         self.fitness = 0
         self.success = False
         self.thrusting = False  # Added for flame visualization
+        self.hit_wall = False
 
     def apply_thrust(self):
         if self.combustivel > 0:
@@ -106,13 +110,16 @@ class Rocket:
             # Boundary checking
             if (self.x < 0 or self.x > LARGURA or self.y > ALTURA or
                 (self.y > ALTURA - 10 and (self.x < LARGURA / 2 - 50 or self.x > LARGURA / 2 + 50))):
+                if(self.x < 0 or self.x > LARGURA or self.y < 0):
+                    self.hit_wall = True
+                    print("hitwall")
                 self.colidiu = True
 
             # Landing success check
             if (self.y > ALTURA - 20 and
                 LARGURA / 2 - 50 < self.x < LARGURA / 2 + 50 and
-                abs(self.vy) < 30 and
-                abs(self.angulo) < 0.2) and self.combustivel < 90:
+                abs(self.vy) < SPEED_LIMIT and
+                abs(self.angulo) < 0.2):
                 self.success = True
                 self.colidiu = True
                 print("success!")
@@ -192,40 +199,51 @@ class Evolution:
 
         return all_done
 
+    
     def calculate_fitness(self, rocket: Rocket) -> float:
         landing_pad_x = LARGURA / 2
         distance_to_pad = abs(rocket.x - landing_pad_x)
 
-        fitness = -distance_to_pad
-        fitness -= abs(rocket.vy) * 100
-        fitness -= abs(rocket.vx) * 100
-        fitness -= abs(rocket.angulo) * 50
-        fitness += rocket.combustivel
+        # Base fitness components
+        fitness = 0
 
-        if(rocket.colidiu):
-            fitness -= 500
+        # Reward for being close to the landing pad
+        fitness -= distance_to_pad * 1000
 
+        # Penalize vertical velocity more aggressively
+        fitness -= abs(rocket.vy) * 2000
+
+        # Penalize horizontal velocity
+        fitness -= abs(rocket.vx) * 1000
+
+        # Strong penalty for being off-angle
+        fitness -= abs(rocket.angulo) * 200
+
+        # Reward remaining fuel (encourages efficient landing)
+        fitness += (MAX_COMBUSTIVEL -  rocket.combustivel) * 10
+
+        # Major success bonus
         if rocket.success:
-            fitness += 1000
+            fitness += 10000
+
+        # Severe penalties for failure modes
+        if rocket.colidiu and not rocket.success:
+            fitness -= 5000
+
+        if rocket.hit_wall:
+            fitness -= 50000
 
         return float(fitness)
 
-    def crossover(self, parent1: NeuralNetwork, parent2: NeuralNetwork) -> NeuralNetwork:
-        child = NeuralNetwork()
-        for i in range(len(parent1.weights)):
-            # Perform crossover for each weight matrix
-            mask = np.random.rand(*parent1.weights[i].shape) > 0.5  # 50% chance per weight
-            child.weights[i] = np.where(mask, parent1.weights[i], parent2.weights[i])
-        return child
-
-
-    def sexual_evolve(self):
+    def sexual_evolve(self, top_performer_bias=2.0):
         # Reset rockets for the new generation
         self.rockets = [Rocket() for _ in range(POPULATION_SIZE)]
+        self.run = 0
 
         # Calculate the best fitness of the current generation
         current_max_fitness = max(self.fitness_scores)
         self.current_best_fitness = current_max_fitness
+        
         if current_max_fitness > self.best_fitness:
             self.best_fitness = current_max_fitness
             self.best_network = self.population[self.fitness_scores.index(current_max_fitness)]
@@ -233,41 +251,80 @@ class Evolution:
         # Sort networks by their fitness
         sorted_pairs = sorted(zip(self.fitness_scores, self.population),
                               key=lambda pair: pair[0], reverse=True)
-        sorted_networks = [x for _, x in sorted_pairs]
+        
+        # Elite selection: Preserve the top performers
+        elite_size = max(3, POPULATION_SIZE // 8)  # At least 2 elites
+        elites = [network for _, network in sorted_pairs[:elite_size]]
 
-        # Elite selection: Preserve the top k networks
-        elite_size = min(5, POPULATION_SIZE)  # Ensure we don't exceed the population size
-        elites = sorted_networks[:elite_size]  # These are NeuralNetwork objects
-
-        # Normalize fitness scores for the remaining individuals
+        # Compute exponential fitness weights to strongly bias towards top performers
         remaining_fitness_scores = [f for f, _ in sorted_pairs[elite_size:]]
-        min_fitness = min(remaining_fitness_scores) if remaining_fitness_scores else 0
-        fitness_range = max(1.0, current_max_fitness - min_fitness)
-        normalized_fitness = [
-            (f - min_fitness) / fitness_range
-            for f, _ in sorted_pairs[elite_size:]
-        ]
+        if not remaining_fitness_scores:
+            return  # Prevent division by zero or empty population
 
-        # Selection pool for the rest of the population
-        selection_probs = [f / sum(normalized_fitness) for f in normalized_fitness]
+        # Exponential fitness scaling
+        min_fitness = min(remaining_fitness_scores)
+        normalized_fitness = [(f - min_fitness + 1) ** top_performer_bias 
+                              for f in remaining_fitness_scores]
+        total_fitness = sum(normalized_fitness)
+        selection_probs = [f / total_fitness for f in normalized_fitness]
 
         def select_parent():
-            return random.choices(sorted_networks[elite_size:], weights=selection_probs, k=1)[0]
+            # Include top performers in parent selection
+            all_candidates = sorted_pairs[:elite_size // 2] + sorted_pairs[elite_size:]
+            candidates = [network for _, network in all_candidates]
+            weights = [1 / (i + 1) for i in range(len(all_candidates))]
+            return random.choices(candidates, weights=weights, k=1)[0]
 
-        # Create the rest of the new population using sexual reproduction
-        new_population = elites  # Start with elites
+        # Create new population
+        new_population = elites.copy()  # Start with elites
+
+        # Ensure top performers reproduce multiple times
+        top_performers = sorted_pairs[:elite_size // 2]
+        for _, network in top_performers:
+            for _ in range(2):  # Each top performer creates 2 offspring
+                parent1 = network
+                parent2 = select_parent()
+                
+                child = self.advanced_crossover(parent1, parent2)
+                mutation_rate = self.compute_mutation_rate()
+                child.mutate(rate=mutation_rate)
+                
+                new_population.append(child)
+
+        # Fill remaining population
         while len(new_population) < POPULATION_SIZE:
             parent1 = select_parent()
             parent2 = select_parent()
-            child = self.crossover(parent1, parent2)
-            child.mutate()
+            
+            child = self.advanced_crossover(parent1, parent2)
+            mutation_rate = self.compute_mutation_rate()
+            child.mutate(rate=mutation_rate)
+            
             new_population.append(child)
 
-        # Replace the population with the new one
-        self.population = new_population
+        # Replace population
+        self.population = new_population[:POPULATION_SIZE]
         self.generation += 1
-        self.fitness_scores = [0.0] * POPULATION_SIZE  # Reset fitness scores
+        self.fitness_scores = [0.0] * POPULATION_SIZE
 
+    def advanced_crossover(self, parent1, parent2):
+        child = NeuralNetwork()
+        for i in range(len(parent1.weights)):
+            # More nuanced crossover strategy
+            crossover_mask = np.random.random(parent1.weights[i].shape) < 0.5
+            child.weights[i] = np.where(
+                crossover_mask, 
+                parent1.weights[i], 
+                parent2.weights[i]
+            )
+        return child
+
+    def compute_mutation_rate(self):
+        # Adaptive mutation rate
+        # Higher mutation early, lower as fitness improves
+        base_rate = 0.1
+        diversity_factor = len(set(tuple(map(tuple, net.weights[0])) for net in self.population)) / POPULATION_SIZE
+        return base_rate * (1 - self.generation / 100) * diversity_factor
 
     def evolve(self):
         self.rockets = [Rocket() for _ in range(POPULATION_SIZE)]
@@ -312,6 +369,7 @@ def main():
 
     evolution = Evolution()
     font = pygame.font.Font(None, 36)
+    steps = 500
 
     running = True
     while running:
@@ -329,7 +387,7 @@ def main():
 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    evolution.evolve()
+                    evolution.sexual_evolve()
                 elif event.key == pygame.K_k:
                     if evolution.best_network:
                         now = datetime.now()
@@ -338,25 +396,43 @@ def main():
                         with open(filename, "wb") as f:
                             pickle.dump(evolution.best_network.weights, f)
                         print(f"Best model saved to {filename}")
+                elif event.key == pygame.K_p:
+                    steps = 1
+                elif event.key == pygame.K_o:
+                    steps = 500
 
         screen.fill(PRETO)
         pygame.draw.rect(screen, VERDE, (LARGURA / 2 - 50, ALTURA - 10, 100, 10))
 
-        all_done = evolution.evaluate_step()
+        for _ in range(steps):
 
-        if all_done:
-            evolution.run += 1
-            evolution.reset_run()
+            all_done = evolution.evaluate_step()
 
-        if evolution.run == 2:
-            evolution.evolve()
+            if all_done:
+                evolution.run += 1
+                evolution.reset_run()
 
-            global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE
+            if evolution.run == 5:
+                evolution.sexual_evolve()
 
-            if evolution.generation % 5 == 0:
-                RAND_X_RANGE = min(200, RAND_X_RANGE + 2)
-                RAND_Y_RANGE = min(50, RAND_Y_RANGE + 2)
-                RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.1)
+                global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT
+
+                if evolution.generation % 10 == 0:
+                    RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
+                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
+                    # RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.01)
+
+                
+                if evolution.generation % 5 == 0:
+                    # RAND_X_RANGE = min(200, RAND_X_RANGE + 0.5)
+                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
+                    # RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.02)
+
+                if evolution.generation % 10 == 0:
+                    # RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
+                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
+                    # RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.05)
+
 
 
         
