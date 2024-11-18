@@ -22,7 +22,7 @@ VERMELHO = (255, 0, 0)
 VERDE = (0, 255, 0)
 
 # Rocket constants
-GRAVIDADE = 0.5
+GRAVIDADE = 0.1
 IMPULSO = 1.0
 RAPIDEZ_ROTACAO = 0.1
 MAX_COMBUSTIVEL = 100
@@ -30,7 +30,7 @@ VELOCIDADE_INICIAL = 2
 
 # Neural Network parameters
 POPULATION_SIZE = 50
-MUTATION_RATE = 0.3
+MUTATION_RATE = 0.5
 MUTATION_RANGE = 1
 
 # Neural Network architecture
@@ -40,7 +40,7 @@ OUTPUT_SIZE = 3
 RAND_X_RANGE = 0
 RAND_Y_RANGE = 0
 RAND_ANGLE_RANGE = 0.5
-SPEED_LIMIT = 20
+SPEED_LIMIT = 30
 # STEPS_PER_FRAME = 50
 
 
@@ -72,11 +72,11 @@ class Rocket:
         self.reset()
 
     def reset(self):
-        self.x = LARGURA / 2  + 100 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
-        self.y = ALTURA / 4  - 90 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
+        self.x = LARGURA / 2  + 300 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
+        self.y = ALTURA / 4  + 0 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
         self.angulo = random.uniform(0, RAND_ANGLE_RANGE)
         self.vx = 0
-        self.vy = 20
+        self.vy = 0
         self.combustivel = MAX_COMBUSTIVEL
         self.colidiu = False
         self.fitness = 0
@@ -113,6 +113,7 @@ class Rocket:
                 if(self.x < 0 or self.x > LARGURA or self.y < 0):
                     self.hit_wall = True
                     print("hitwall")
+                    self.vy = 10000
                 self.colidiu = True
 
             # Landing success check
@@ -211,13 +212,13 @@ class Evolution:
         fitness -= distance_to_pad * 1000
 
         # Penalize vertical velocity more aggressively
-        fitness -= abs(rocket.vy) * 2000
+        fitness -= abs(rocket.vy) * 200000000
 
         # Penalize horizontal velocity
         fitness -= abs(rocket.vx) * 1000
 
         # Strong penalty for being off-angle
-        fitness -= abs(rocket.angulo) * 200
+        fitness -= abs(rocket.angulo) * 2000
 
         # Reward remaining fuel (encourages efficient landing)
         fitness += (MAX_COMBUSTIVEL -  rocket.combustivel) * 10
@@ -418,8 +419,9 @@ def main():
                 global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT
 
                 if evolution.generation % 10 == 0:
-                    RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
+                    RAND_X_RANGE = min(200, RAND_X_RANGE + 0.1)
                     RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
+                    SPEED_LIMIT = max(20, SPEED_LIMIT - 0.2)
                     # RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.01)
 
                 
