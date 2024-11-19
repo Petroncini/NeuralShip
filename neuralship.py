@@ -43,6 +43,7 @@ RAND_VX_RANGE = 0
 RAND_VY_RANGE = 0
 RAND_ANGLE_RANGE = 0.5
 SPEED_LIMIT = 30
+LANDING_X = LARGURA / 2
 # STEPS_PER_FRAME = 50
 
 
@@ -73,17 +74,33 @@ class Rocket:
     def __init__(self):
         self.reset()
 
+    
     def reset(self):
-        self.x = LARGURA / 2  + 0 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
-        self.y = ALTURA / 4  - 20 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
-        self.angulo = random.uniform(0, RAND_ANGLE_RANGE)
-        self.vx = random.uniform(-RAND_VX_RANGE, RAND_VX_RANGE)
-        self.vy = 10 + random.uniform(-RAND_VY_RANGE, RAND_VY_RANGE)
+        # First, determine the initial angle and velocity
+        self.angulo = random.uniform(-RAND_ANGLE_RANGE, RAND_ANGLE_RANGE)  # Angle between -45 and 45 degrees
+        base_speed = 10 + random.uniform(-RAND_VY_RANGE, RAND_VY_RANGE)
+         
+        # Calculate velocity components ensuring downward motion
+        self.vx = base_speed * math.sin(self.angulo)  # Horizontal component
+        self.vy = abs(base_speed * math.cos(self.angulo))  # Vertical component (always positive/downward)
+        
+        # Calculate starting position by "backtracking" from center
+        trajectory_time = 1.0  # How far back in time to start
+        
+        # Base position (center of screen with random variation)
+        target_x = LARGURA /2 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
+        target_y = ALTURA / 4 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
+        
+        # Calculate initial position by moving backwards along the trajectory
+        self.x = target_x - (self.vx * trajectory_time)
+        self.y = target_y - (self.vy * trajectory_time - 0.5 * GRAVIDADE * trajectory_time * trajectory_time)
+        
+        # Reset other properties
         self.combustivel = MAX_COMBUSTIVEL
         self.colidiu = False
         self.fitness = 0
         self.success = False
-        self.thrusting = False  # Added for flame visualization
+        self.thrusting = False
         self.hit_wall = False
 
     def apply_thrust(self):
@@ -111,7 +128,7 @@ class Rocket:
 
             # Boundary checking
             if (self.x < 0 or self.x > LARGURA or self.y > ALTURA or
-                (self.y > ALTURA - 10 and (self.x < LARGURA / 2 - 50 or self.x > LARGURA / 2 + 50))):
+                (self.y > ALTURA - 10 and (self.x < LANDING_X - 50 or self.x > LANDING_X + 50))):
                 if(self.x < 0 or self.x > LARGURA or self.y < 0):
                     self.hit_wall = True
                     self.vy = 10000
@@ -119,7 +136,7 @@ class Rocket:
 
             # Landing success check
             if (self.y > ALTURA - 20 and
-                LARGURA / 2 - 50 < self.x < LARGURA / 2 + 50 and
+                LANDING_X - 50 < self.x < LANDING_X + 50 and
                 abs(self.vy) < SPEED_LIMIT and
                 abs(self.angulo) < 0.2):
                 self.success = True
@@ -174,7 +191,7 @@ class Evolution:
         for i, (rocket, network) in enumerate(zip(self.rockets, self.population)):
             if not rocket.colidiu:
                 all_done = False
-                landing_pad_x = LARGURA / 2
+                landing_pad_x = LANDING_X
                 inputs = np.array([
                     rocket.x / LARGURA,
                     rocket.y / ALTURA,
@@ -201,7 +218,7 @@ class Evolution:
 
     
     def calculate_fitness(self, rocket: Rocket) -> float:
-        landing_pad_x = LARGURA / 2
+        landing_pad_x = LANDING_X
         distance_to_pad = abs(rocket.x - landing_pad_x)
 
         # Base fitness components
@@ -422,7 +439,7 @@ def main():
                 global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT, RAND_VY_RANGE, RAND_VX_RANGE
 
                 if evolution.generation % 10 == 0:
-                    RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
+                    RAND_X_RANGE = min(300, RAND_X_RANGE + 1)
                     if evolution.generation > 150:
                         RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0.5)
                         RAND_VY_RANGE = min(10, RAND_VY_RANGE + 0.5)
@@ -451,7 +468,7 @@ def main():
         screen.fill(PRETO)
 
         if render:
-            pygame.draw.rect(screen, VERDE, (LARGURA / 2 - 50, ALTURA - 10, 100, 10))
+            pygame.draw.rect(screen, VERDE, (LANDING_X - 50, ALTURA - 10, 100, 10))
             for rocket in evolution.rockets:
                 rocket.draw(screen)
 
