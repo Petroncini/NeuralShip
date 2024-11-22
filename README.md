@@ -1,6 +1,7 @@
 # Foguetes Genéticos
 
 Este projeto visa utilizar um algoritmo genético para otimizar o controlador de um foguete simulado e fazê-lo aprender a pousar seguramente em uma plataforma após reentrada. Inspirado pela aula de Sistemas Bioinspirados do Professor Eduardo do Vale Simões, o projeto foi implementado em Python (mil desculpas) e utiliza a biblioteca Pygame para visualização.
+![bestyet](https://github.com/user-attachments/assets/ed0e9ad2-9f91-4019-b7df-24ee33f35624)
 
 ## Controlador Neural
 
@@ -28,7 +29,6 @@ Em cada frame, o estado atual do foguete é alimentado na rede neural, e sua sa�
 - Colidem com as bordas
 - Pousam com sucesso
 
-![Foguetes pousando, já vi melhores](https://github.com/user-attachments/assets/c22ba342-e943-4ece-9a6a-60a7ecc8bb3f)
 
 ## Função de Fitness
 
@@ -39,7 +39,7 @@ A avaliação dos indivíduos considera múltiplos parâmetros:
 - Diferença do ângulo em relação a 90 graus (desencorajada)
 - Combustível consumido (incentivado)
 - Sucesso de pouso
-- Penalidade adicional por colisão lateral
+- Penalidade adicional por colisão lateralq
 
 ## Estratégia de Treinamento
 
@@ -71,8 +71,12 @@ Os parâmetros iniciais (posição, ângulo, velocidade) têm componentes aleat�
 O objetivo final do treinamento era obter um algoritmo capaz de fazer o controle dinâmico do foguete, realizando um pouso controlado e robusto. Essa robustez foi o principal desafio no desenvolvimento da política de treinamento. 
 
 Inicialmente, observamos que ao treinar os foguetes com condições iniciais fixas ou com pouca variação, os indivíduos ficavam extremamente bons em realizar o pouso, mas qualquer variação fora dos parâmetros do treinamento resultava em falha total do algoritmo. Eles estavam efetivamente seguindo um plano de voo, não se adaptando às condições do ambiente.
+![neat](https://github.com/user-attachments/assets/379fda47-5b34-49a0-8f9f-56d54a214d8b)
+
+![collapse](https://github.com/user-attachments/assets/11093a03-88b3-45ca-9907-4092143af694)
 
 O treinamento com grande variação de condições iniciais apresentava o problema de que as redes eram incapazes de fazer o menor progresso. Não havia nenhum indivíduo que aprendesse a direcionar seu voo. No máximo, eles aprendiam a desacelerar sua descida. O problema foi muito complexo para o algoritmo resolver de uma vez. Talvez com mais gerações e mais indivíduos ainda seria possível resolver.
+![randfail](https://github.com/user-attachments/assets/0b08ef86-e18b-4c58-b429-24483de51be2)
 
 O meio termo que apresentou o resultado ótimo foi uma escala gradual da dificuldade do problema. Assim, nas primeiras gerações, eram avaliadas em um ambiente com pouca variação das condições iniciais. Nessas primeiras gerações, as redes aprenderam a reduzir sua velocidade e a direcionar sua descida para o centro da plataforma. Nas gerações mais avançadas, as redes eram avaliadas com condições iniciais mais extremas e com mais ciclos de avaliação por indivíduo. Nessa etapa, as redes refinaram sua capacidade de controle adquirido na etapa inicial de treinamento. As redes então se tornaram capazes de realizar manobras extremas de correção de trajetória.
 
