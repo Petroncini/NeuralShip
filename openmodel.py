@@ -1,3 +1,4 @@
+
 import math
 import pickle
 import random
@@ -42,7 +43,14 @@ RAND_ANGLE_RANGE = 0.5
 SPEED_LIMIT = 30
 average_fitness = []
 global runs
+global successes
+global dists
+dists = 0
+successes = 0
 runs = 10
+LANDING_RAND_RANGE = 200
+global landing_x
+landing_x = LARGURA / 2 + random.uniform(-LANDING_RAND_RANGE, LANDING_RAND_RANGE)
 
 # STEPS_PER_FRAME = 50
 
@@ -82,7 +90,7 @@ class Rocket:
         
         trajectory_time = 1.0  # How far back in time to start
         
-        target_x = LARGURA / 2 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
+        target_x = landing_x + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
         target_y = ALTURA / 4 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
         
         self.x = target_x - (self.vx * trajectory_time)
@@ -119,18 +127,22 @@ class Rocket:
             self.y += self.vy
 
             if (self.x < 0 or self.x > LARGURA or self.y > ALTURA or
-                (self.y > ALTURA - 10 and (self.x < LARGURA / 2 - 50 or self.x > LARGURA / 2 + 50))):
+                (self.y > ALTURA - 10 and (self.x < landing_x - 50 or self.x > landing_x + 50))):
                 if(self.x < 0 or self.x > LARGURA or self.y < 0):
                     self.hit_wall = True
                     self.vy = 10000 # gambiarra para eles não se tacarem na parede
                 self.colidiu = True
 
             if (self.y > ALTURA - 20 and
-                LARGURA / 2 - 50 < self.x < LARGURA / 2 + 50 and
+                landing_x - 50 < self.x < landing_x + 50 and
                 abs(self.vy) < SPEED_LIMIT and
                 abs(self.angulo) < 0.2):
                 self.success = True
                 self.colidiu = True
+                global successes
+                successes += 1
+                global dists
+                dists += abs(self.x - landing_x)
 
     def draw(self, screen):
         if not self.colidiu or self.success:
@@ -179,9 +191,9 @@ class Evolution:
         for i, (rocket, network) in enumerate(zip(self.rockets, self.population)):
             if not rocket.colidiu:
                 all_done = False
-                landing_pad_x = LARGURA / 2
+                landing_pad_x = landing_x
                 inputs = np.array([
-                    rocket.x / LARGURA,
+                    0,
                     rocket.y / ALTURA,
                     rocket.vx / 10,
                     rocket.vy / 10,
@@ -206,7 +218,7 @@ class Evolution:
 
     
     def calculate_fitness(self, rocket: Rocket) -> float:
-        landing_pad_x = LARGURA / 2
+        landing_pad_x = landing_x
         distance_to_pad = abs(rocket.x - landing_pad_x)
 
         fitness = 0
@@ -232,58 +244,45 @@ class Evolution:
 
         return float(fitness)
 
-    def sexual_evolve(self, top_performer_bias=2.0, cull_percentage=0.1):
+    def sexual_evolve(self, top_performer_bias=2.0):
         self.rockets = [Rocket() for _ in range(POPULATION_SIZE)]
         self.run = 0
+
         current_max_fitness = max(self.fitness_scores)
         average_fitness.append(current_max_fitness / runs)
+
         self.current_best_fitness = current_max_fitness
         
         if current_max_fitness > self.best_fitness:
             self.best_fitness = current_max_fitness
             self.best_network = self.population[self.fitness_scores.index(current_max_fitness)]
-        
-        # Calculate how many networks to remove
-        cull_count = int(POPULATION_SIZE * cull_percentage)
-        
-        # Sort networks by fitness
+
         sorted_pairs = sorted(zip(self.fitness_scores, self.population),
                               key=lambda pair: pair[0], reverse=True)
         
-        # Cull the bottom performers
-        self.population = [network for _, network in sorted_pairs[:-cull_count]]
-        
-        # Determine elite size
-        elite_size = max(3, len(self.population) // 8)  
-        
-        # Select elites from the remaining population
-        elites = sorted_pairs[:-cull_count][:elite_size]
-        elites = [network for _, network in elites]
-        
-        # Prepare for reproduction
-        remaining_fitness_scores = [f for f, _ in sorted_pairs[:-cull_count][elite_size:]]
+        elite_size = max(3, POPULATION_SIZE // 8)  
+        elites = [network for _, network in sorted_pairs[:elite_size]]
 
+        remaining_fitness_scores = [f for f, _ in sorted_pairs[elite_size:]]
         if not remaining_fitness_scores:
             return  
-        
+
         min_fitness = min(remaining_fitness_scores)
         normalized_fitness = [(f - min_fitness + 1) ** top_performer_bias 
                               for f in remaining_fitness_scores]
         total_fitness = sum(normalized_fitness)
         selection_probs = [f / total_fitness for f in normalized_fitness]
-        
+
         def select_parent():
             # Include top performers in parent selection
-            all_candidates = sorted_pairs[:-cull_count][:elite_size // 2] + sorted_pairs[:-cull_count][elite_size:]
+            all_candidates = sorted_pairs[:elite_size // 2] + sorted_pairs[elite_size:]
             candidates = [network for _, network in all_candidates]
             weights = [1 / (i + 1) for i in range(len(all_candidates))]
             return random.choices(candidates, weights=weights, k=1)[0]
-        
-        # Start new population with elites
+
         new_population = elites.copy()  
-        
-        # Reproduce top performers
-        top_performers = sorted_pairs[:-cull_count][:elite_size // 2]
+
+        top_performers = sorted_pairs[:elite_size // 2]
         for _, network in top_performers:
             for _ in range(2):  
                 parent1 = network
@@ -294,25 +293,17 @@ class Evolution:
                 child.mutate(rate=mutation_rate)
                 
                 new_population.append(child)
-        
-        # Fill the rest of the population
+
         while len(new_population) < POPULATION_SIZE:
-            # If not enough children, start adding random networks
-            if len(new_population) > POPULATION_SIZE - cull_count:
-                new_network = NeuralNetwork()  # Assuming this creates a random network
-                new_population.append(new_network)
-            else:
-                # Continue reproducing
-                parent1 = select_parent()
-                parent2 = select_parent()
-                
-                child = self.advanced_crossover(parent1, parent2)
-                mutation_rate = self.compute_mutation_rate()
-                child.mutate(rate=mutation_rate)
-                
-                new_population.append(child)
-        
-        # Ensure population size is correct
+            parent1 = select_parent()
+            parent2 = select_parent()
+            
+            child = self.advanced_crossover(parent1, parent2)
+            mutation_rate = self.compute_mutation_rate()
+            child.mutate(rate=mutation_rate)
+            
+            new_population.append(child)
+
         self.population = new_population[:POPULATION_SIZE]
         self.generation += 1
         self.fitness_scores = [0.0] * POPULATION_SIZE
@@ -397,9 +388,16 @@ def plot_to_surface(delicious_fig):
 
 
 def main():
+    global landing_x
     screen = pygame.display.set_mode((LARGURA, ALTURA))
     pygame.display.set_caption("Rocket Landing AI")
     clock = pygame.time.Clock()
+    with open("best_model_21:18:11.pkl", "rb") as f:
+        saved_weights = pickle.load(f)
+
+    best_model = NeuralNetwork()
+    best_model.weights = saved_weights
+    rocket = Rocket()
 
     evolution = Evolution()
     font = pygame.font.Font(None, 36)
@@ -408,6 +406,10 @@ def main():
     fitness_plot_surface = None
     global runs
     running = True
+    global successes
+    global dists
+    tries = 0
+    wait = 0
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -464,69 +466,63 @@ def main():
                     render  = True
 
 
-        for _ in range(steps):
+        screen.fill(PRETO)
 
-            all_done = evolution.evaluate_step()
+        
+        if not rocket.colidiu:
+            landing_pad_x = landing_x
+            inputs = np.array([
+                rocket.x / LARGURA,
+                rocket.y / ALTURA,
+                rocket.vx / 10,
+                rocket.vy / 10,
+                rocket.angulo / (math.pi / 2),
+                (rocket.x - landing_pad_x) / LARGURA,
+                rocket.combustivel / MAX_COMBUSTIVEL
+            ])
 
-            if all_done:
-                evolution.run += 1
-                evolution.reset_run()
+            outputs = best_model.forward(inputs)
+            rocket.thrusting = False
+            if outputs[0] > 0:
+                rocket.apply_thrust()
+            if outputs[1] > 0:
+                rocket.rotate_left()
+            if outputs[2] > 0:
+                rocket.rotate_right()
 
-            if evolution.run == runs:
-                evolution.sexual_evolve()
-
-                global RAND_X_RANGE, RAND_Y_RANGE, RAND_ANGLE_RANGE, SPEED_LIMIT, RAND_VY_RANGE, RAND_VX_RANGE
-
-                if evolution.generation > 500:
-                    RAND_X_RANGE = 200
-                    RAND_Y_RANGE = 100
-
-                if evolution.generation % 10 == 0:
-                    RAND_X_RANGE = min(300, RAND_X_RANGE + 1)
-                    if evolution.generation > 150:
-                        RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0.5)
-                        RAND_VY_RANGE = min(20, RAND_VY_RANGE + 0.5)
-                        RAND_VX_RANGE = min(20, RAND_VX_RANGE + 0.5)
-                        runs = 20
-                    SPEED_LIMIT = max(20, SPEED_LIMIT - 0.2)
-                    RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.01)
-
-                    if evolution.generation > 500:
-                        runs = 50
+            rocket.update()
+        else:
+            wait += 1
+            if(rocket.success):
+                text = font.render(
+                        f"SUCCESS",
+                        True, VERDE
+                )
+                screen.blit(text, (10, 30))
+            if(wait >= 50):
+                rocket.reset()
+                landing_x = LARGURA / 2 #+ random.uniform(-LANDING_RAND_RANGE, LANDING_RAND_RANGE)
+                wait = 0
+                tries += 1
+                print(f"Sucess rate: {successes / tries}")
+                print(f"Avg dist: {dists / tries}")
 
 
-                if evolution.generation % 5 == 0:
-                    RAND_X_RANGE = min(200, RAND_X_RANGE + 0.5)
-                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
-                    RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.02)
-
-                if evolution.generation % 10 == 0:
-                    RAND_X_RANGE = min(200, RAND_X_RANGE + 1)
-                    RAND_Y_RANGE = min(50, RAND_Y_RANGE + 0)
-                    RAND_ANGLE_RANGE = min(math.pi, RAND_ANGLE_RANGE + 0.05)
-#
 
 
         
-        screen.fill(PRETO)
 
         if evolution.generation % 5 == 0:
             fitness_plot = plot_fitness_history(average_fitness)
             fitness_plot_surface = plot_to_surface(fitness_plot)
 
         if render:
-            pygame.draw.rect(screen, VERDE, (LARGURA / 2 - 50, ALTURA - 10, 100, 10))
-            for rocket in evolution.rockets:
-                rocket.draw(screen)
+            pygame.draw.rect(screen, VERDE, (landing_x - 50, ALTURA - 10, 100, 10))
+            rocket.draw(screen)
 
             if fitness_plot_surface:
                 screen.blit(fitness_plot_surface, (10, 50))
 
-        text = font.render(
-            f"Gen {evolution.generation}",
-            True, BRANCO
-        )
-        screen.blit(text, (10, 10))
 
         pygame.display.flip()
         clock.tick(30)
