@@ -13,24 +13,28 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 pygame.init()
 pygame.time
-
-LARGURA = 800  # Width
-ALTURA = 600   # Height
+# Configurações da janela de simulação
+LARGURA = 800  # Largura da tela
+ALTURA = 600   # Altura da tela
+# Definição de cores
 BRANCO = (255, 255, 255)
 PRETO = (0, 0, 0)
 VERMELHO = (255, 0, 0)
 VERDE = (0, 255, 0)
 
-GRAVIDADE = 0.5
-IMPULSO = 2.0
-RAPIDEZ_ROTACAO = 0.1
-MAX_COMBUSTIVEL = 100
-VELOCIDADE_INICIAL = 2
+# Parâmetros físicos da simulação
+GRAVIDADE = 0.5  # Aceleração da gravidade
+IMPULSO = 2.0    # Força de impulso do foguete
+RAPIDEZ_ROTACAO = 0.1  # Velocidade de rotação
+MAX_COMBUSTIVEL = 100  # Quantidade máxima de combustível
+VELOCIDADE_INICIAL = 2  # Velocidade inicial
 
-POPULATION_SIZE = 50
-MUTATION_RATE = 0.5
-MUTATION_RANGE = 1
+# Configurações de população e algoritmo genético
+POPULATION_SIZE = 50   # Tamanho da população
+MUTATION_RATE = 0.5    # Taxa de mutação
+MUTATION_RANGE = 1     # Alcance da mutação
 
+# Configurações da rede neural
 INPUT_SIZE = 7  
 HIDDEN_LAYERS = [32, 32]  
 OUTPUT_SIZE = 3
@@ -49,12 +53,14 @@ runs = 10
 
 class NeuralNetwork:
     def __init__(self):
+        # Inicialização da rede neural com pesos aleatórios
         self.weights = []
         layer_sizes = [INPUT_SIZE] + HIDDEN_LAYERS + [OUTPUT_SIZE]
         for i in range(len(layer_sizes) - 1):
             self.weights.append(np.random.randn(layer_sizes[i], layer_sizes[i + 1]))
 
     def forward(self, inputs):
+        # Propagação para frente na rede neural usando tangente hiperbólica
         activation = inputs
         for weight in self.weights:
             activation = np.dot(activation, weight)
@@ -62,6 +68,7 @@ class NeuralNetwork:
         return activation
 
     def mutate(self, rate=MUTATION_RATE):
+        # Mutação dos pesos da rede neural
         for i in range(len(self.weights)):
             mask = np.random.random(self.weights[i].shape) < rate
             self.weights[i] += mask * np.random.randn(*self.weights[i].shape) * MUTATION_RANGE
@@ -69,31 +76,41 @@ class NeuralNetwork:
 
 class Rocket:
     def __init__(self):
+        # Inicialização do foguete
         self.reset()
 
   
 
     def reset(self):
-        self.angulo = random.uniform(-RAND_ANGLE_RANGE, RAND_ANGLE_RANGE)  # Angle between -45 and 45 degrees
+        # Reinicialização das condições do foguete
+        # Ângulo inicial aleatório próximo de zero
+        self.angulo = random.uniform(-RAND_ANGLE_RANGE, RAND_ANGLE_RANGE)
+
+        # Velocidade base com variação aleatória
         base_speed = 10 + random.uniform(-RAND_VY_RANGE, RAND_VY_RANGE)
          
-        self.vx = base_speed * math.sin(self.angulo)  # Horizontal component
-        self.vy = abs(base_speed * math.cos(self.angulo))  # Vertical component (always positive/downward)
+        # Componentes x e y da velocidade baseadas no ângulo
+        self.vx = base_speed * math.sin(self.angulo) 
+        self.vy = abs(base_speed * math.cos(self.angulo)) 
         
-        trajectory_time = 1.0  # How far back in time to start
+        # Cálculo da trajetória inicial
+        trajectory_time = 1.0  
         
+        # Definição de um alvo próximo ao centro da tela
         target_x = LARGURA / 2 + random.uniform(-RAND_X_RANGE, RAND_X_RANGE)
         target_y = ALTURA / 4 + random.uniform(-RAND_Y_RANGE, RAND_Y_RANGE)
         
+        # Posição inicial calculada retroativamente
         self.x = target_x - (self.vx * trajectory_time)
         self.y = target_y - (self.vy * trajectory_time - 0.5 * GRAVIDADE * trajectory_time * trajectory_time)
         
+        # Reinicialização de estados
         self.combustivel = MAX_COMBUSTIVEL
         self.colidiu = False
         self.fitness = 0
         self.success = False
         self.thrusting = False
-        self.hit_wall = False
+        self.hit_wall = False# How far back in time to start
 
     def apply_thrust(self):
         if self.combustivel > 0:
@@ -113,22 +130,32 @@ class Rocket:
         self.angulo += RAPIDEZ_ROTACAO
 
     def update(self):
+    # Verifica se o foguete não colidiu e não completou o pouso
         if not self.colidiu and not self.success:
+            # Aplica gravidade na velocidade vertical
             self.vy += GRAVIDADE
+            
+            # Atualiza a posição do foguete baseado nas velocidades
             self.x += self.vx
             self.y += self.vy
 
+            # Verifica condições de colisão com os limites da tela
             if (self.x < 0 or self.x > LARGURA or self.y > ALTURA or
                 (self.y > ALTURA - 10 and (self.x < LARGURA / 2 - 50 or self.x > LARGURA / 2 + 50))):
+                
+                # Se bater nos limites laterais ou superiores, marca como colisão
                 if(self.x < 0 or self.x > LARGURA or self.y < 0):
                     self.hit_wall = True
-                    self.vy = 10000 # gambiarra para eles não se tacarem na parede
+                    self.vy = 10000  # Força uma penalização extrema para colisões com paredes
+
                 self.colidiu = True
 
+            # Verifica condições de pouso bem-sucedido
             if (self.y > ALTURA - 20 and
                 LARGURA / 2 - 50 < self.x < LARGURA / 2 + 50 and
                 abs(self.vy) < SPEED_LIMIT and
                 abs(self.angulo) < 0.2):
+                # Marca como pouso bem-sucedido
                 self.success = True
                 self.colidiu = True
 
@@ -165,41 +192,58 @@ class Rocket:
 
 class Evolution:
     def __init__(self):
+        # Inicializa população de redes neurais e foguetes
         self.population = [NeuralNetwork() for _ in range(POPULATION_SIZE)]
+        # Variáveis de acompanhamento da evolução
         self.generation = 1
         self.best_fitness = float('-inf')
         self.best_network = None
+        # Pontuações de aptidão para cada indivíduo
         self.rockets = [Rocket() for _ in range(POPULATION_SIZE)]
         self.fitness_scores = [0.0] * POPULATION_SIZE
         self.current_best_fitness = float('-inf')
         self.run = 0
 
     def evaluate_step(self):
+        # Verifica se todos os foguetes terminaram sua trajetória
         all_done = True
+        # Itera sobre cada foguete e sua respectiva rede neural
         for i, (rocket, network) in enumerate(zip(self.rockets, self.population)):
+            # Se o foguete ainda está em movimento
             if not rocket.colidiu:
                 all_done = False
+                # Posição da plataforma de pouso
                 landing_pad_x = LARGURA / 2
+
+                # Prepara entradas para a rede neural
+                # Normaliza informações para valores entre 0 e 1
+               
                 inputs = np.array([
-                    rocket.x / LARGURA,
-                    rocket.y / ALTURA,
-                    rocket.vx / 10,
-                    rocket.vy / 10,
-                    rocket.angulo / (math.pi / 2),
-                    (rocket.x - landing_pad_x) / LARGURA,
-                    rocket.combustivel / MAX_COMBUSTIVEL
+                    rocket.x / LARGURA,                     # Posição x normalizada
+                    rocket.y / ALTURA,                      # Posição y normalizada
+                    rocket.vx / 10,                         # Velocidade x normalizada
+                    rocket.vy / 10,                         # Velocidade y normalizada
+                    rocket.angulo / (math.pi / 2),          # Ângulo normalizado
+                    (rocket.x - landing_pad_x) / LARGURA,   # Distância da plataforma
+                    rocket.combustivel / MAX_COMBUSTIVEL    # Combustível restante
                 ])
-
+                # Obtém saídas da rede neural
                 outputs = network.forward(inputs)
+                # Reinicia estado de propulsão
                 rocket.thrusting = False
-                if outputs[0] > 0:
-                    rocket.apply_thrust()
-                if outputs[1] > 0:
-                    rocket.rotate_left()
-                if outputs[2] > 0:
-                    rocket.rotate_right()
 
+                # Decide ações baseadas nas saídas da rede
+                if outputs[0] > 0:
+                    rocket.apply_thrust() # Aplica impulso
+                if outputs[1] > 0:
+                    rocket.rotate_left() # Rotaciona para esquerda
+                if outputs[2] > 0:
+                    rocket.rotate_right() # Rotaciona para direita
+
+                # Atualiza estado do foguete
                 rocket.update()
+
+                # Calcula e acumula pontuação de aptidão
                 self.fitness_scores[i] += float(self.calculate_fitness(rocket))
 
         return all_done
@@ -243,24 +287,24 @@ class Evolution:
             self.best_fitness = current_max_fitness
             self.best_network = self.population[self.fitness_scores.index(current_max_fitness)]
         
-        # Calculate how many networks to remove
+
         cull_count = int(POPULATION_SIZE * cull_percentage)
         
-        # Sort networks by fitness
+
         sorted_pairs = sorted(zip(self.fitness_scores, self.population),
                               key=lambda pair: pair[0], reverse=True)
         
-        # Cull the bottom performers
+
         self.population = [network for _, network in sorted_pairs[:-cull_count]]
         
-        # Determine elite size
+
         elite_size = max(3, len(self.population) // 8)  
         
-        # Select elites from the remaining population
+
         elites = sorted_pairs[:-cull_count][:elite_size]
         elites = [network for _, network in elites]
         
-        # Prepare for reproduction
+
         remaining_fitness_scores = [f for f, _ in sorted_pairs[:-cull_count][elite_size:]]
 
         if not remaining_fitness_scores:
@@ -273,16 +317,16 @@ class Evolution:
         selection_probs = [f / total_fitness for f in normalized_fitness]
         
         def select_parent():
-            # Include top performers in parent selection
+
             all_candidates = sorted_pairs[:-cull_count][:elite_size // 2] + sorted_pairs[:-cull_count][elite_size:]
             candidates = [network for _, network in all_candidates]
             weights = [1 / (i + 1) for i in range(len(all_candidates))]
             return random.choices(candidates, weights=weights, k=1)[0]
         
-        # Start new population with elites
+
         new_population = elites.copy()  
         
-        # Reproduce top performers
+
         top_performers = sorted_pairs[:-cull_count][:elite_size // 2]
         for _, network in top_performers:
             for _ in range(2):  
@@ -295,14 +339,14 @@ class Evolution:
                 
                 new_population.append(child)
         
-        # Fill the rest of the population
+
         while len(new_population) < POPULATION_SIZE:
-            # If not enough children, start adding random networks
+
             if len(new_population) > POPULATION_SIZE - cull_count:
-                new_network = NeuralNetwork()  # Assuming this creates a random network
+                new_network = NeuralNetwork() 
                 new_population.append(new_network)
             else:
-                # Continue reproducing
+
                 parent1 = select_parent()
                 parent2 = select_parent()
                 
@@ -312,7 +356,7 @@ class Evolution:
                 
                 new_population.append(child)
         
-        # Ensure population size is correct
+
         self.population = new_population[:POPULATION_SIZE]
         self.generation += 1
         self.fitness_scores = [0.0] * POPULATION_SIZE
